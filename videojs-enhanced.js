@@ -1,6 +1,6 @@
 // Copyparty Video.js Plugin - Enhanced with mpegts.js 
 // Video.js Version: 8.17.3 (Latest)
-// Load with: copyparty --js-browser /path/to/videojs-enhanced.js
+// Load with: copyparty --js-browser /path/to/videojs-enhanced-seekfix.js
 
 (function() {
     'use strict';
@@ -363,20 +363,53 @@
                 opacity: 0;
                 pointer-events: none;
                 transition: opacity 0.2s;
-                z-index: 1;
+                z-index: 10;
             }
             
             .video-js .vjs-control:hover .vjs-control-text {
                 opacity: 1;
             }
             
-            /* Make time display clickable */
-            .video-js .vjs-current-time {
-                cursor: pointer;
+            /* Ensure time display content is always in front of tooltip */
+            .video-js .vjs-current-time-display {
+                position: relative;
+                z-index: 5 !important;
             }
             
-            .video-js .vjs-current-time:hover {
-                background-color: rgba(115, 133, 159, 0.5);
+            /* Make time display clickable with full-width hover */
+            .video-js .vjs-current-time.vjs-time-control.vjs-control {
+                cursor: pointer !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                min-width: 4.5em !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                transition: background-color 0.2s ease !important;
+            }
+            
+            .video-js .vjs-current-time.vjs-time-control.vjs-control:hover {
+                background-color: rgba(115, 133, 159, 0.5) !important;
+            }
+            
+            .video-js .vjs-current-time.vjs-time-control.vjs-control:active {
+                background-color: rgba(115, 133, 159, 0.8) !important;
+            }
+            
+            /* Ensure time display text is visible and fills container */
+            .video-js .vjs-current-time-display {
+                display: block !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+                color: #fff !important;
+                font-size: 1em !important;
+                line-height: 3em !important;
+                padding: 0 0.5em !important;
+                min-width: 3.5em !important;
+                width: 100% !important;
+                text-align: center !important;
+                box-sizing: border-box !important;
+                pointer-events: none !important;
             }
             
             /* Right-align specific controls */
@@ -555,64 +588,159 @@
         videojs.registerComponent('ForwardButton', ForwardButton);
         
         // Custom clickable current time display that toggles between elapsed and remaining
-        const TimeDisplay = videojs.getComponent('TimeDisplay');
+        const Component = videojs.getComponent('Component');
         
-        class ClickableCurrentTimeDisplay extends TimeDisplay {
+        class ClickableCurrentTimeDisplay extends Component {
             constructor(player, options) {
                 super(player, options);
                 this.showRemaining = false;
-                this.addClass('vjs-current-time');
-                this.addClass('vjs-time-control');
-                this.addClass('vjs-control');
-            }
-            
-            buildCSSClass() {
-                return 'vjs-current-time vjs-time-control vjs-control';
+                
+                // Bind methods to ensure proper context
+                this.updateContent = this.updateContent.bind(this);
+                this.handleClick = this.handleClick.bind(this);
+                
+                // Register event listeners
+                this.on(player, 'timeupdate', this.updateContent);
+                this.on(player, 'durationchange', this.updateContent);
+                this.on(player, 'loadedmetadata', this.updateContent);
+                this.on(player, 'ready', this.updateContent);
+                this.on(player, 'play', this.updateContent);
+                
+                console.log('[ClickableCurrentTimeDisplay] Component initialized');
             }
             
             createEl() {
                 const el = videojs.dom.createEl('div', {
-                    className: this.buildCSSClass()
+                    className: 'vjs-current-time vjs-time-control vjs-control'
                 });
+                
+                // Make element explicitly interactive
+                el.setAttribute('role', 'button');
+                el.setAttribute('tabindex', '0');
+                el.setAttribute('aria-label', 'Click to toggle between elapsed and remaining time');
                 
                 this.contentEl_ = videojs.dom.createEl('span', {
                     className: 'vjs-current-time-display'
                 }, {
-                    'aria-live': 'off',
-                    'role': 'presentation'
+                    'aria-live': 'off'
                 });
+                // Don't set initial text - let updateContent handle it
                 
-                // Add tooltip element like other controls
+                // Add tooltip
                 const tooltipEl = videojs.dom.createEl('span', {
-                    className: 'vjs-control-text',
-                    textContent: 'Click to toggle between elapsed/remaining time'
+                    className: 'vjs-control-text'
                 });
+                tooltipEl.textContent = 'Click to toggle between elapsed/remaining time';
                 
                 el.appendChild(this.contentEl_);
                 el.appendChild(tooltipEl);
+                
+                // Register click handler multiple ways to ensure it works
+                this.on(el, 'click', this.handleClick);
+                this.on(el, 'tap', this.handleClick);
+                
+                // Also add native event listener as backup
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.handleClick(e);
+                }, false);
+                
+                console.log('[ClickableCurrentTimeDisplay] Element created with click listener');
+                console.log('[ClickableCurrentTimeDisplay] Element:', el);
+                
+                // Trigger initial update after a short delay
+                setTimeout(() => {
+                    this.updateContent();
+                }, 100);
+                
                 return el;
             }
             
             updateContent() {
                 const player = this.player();
-                const time = this.showRemaining ? 
-                    -(player.duration() - player.currentTime()) : 
-                    player.currentTime();
+                if (!player) {
+                    console.warn('[ClickableCurrentTimeDisplay] No player available');
+                    return;
+                }
                 
-                if (this.contentEl_) {
-                    const formattedTime = videojs.formatTime(Math.abs(time));
-                    this.contentEl_.textContent = this.showRemaining ? '-' + formattedTime : formattedTime;
+                const currentTime = player.currentTime() || 0;
+                const duration = player.duration() || 0;
+                
+                if (!this.contentEl_) {
+                    console.warn('[ClickableCurrentTimeDisplay] Content element not available');
+                    return;
+                }
+                
+                // Don't update if we don't have valid time data yet
+                if (isNaN(currentTime) || isNaN(duration)) {
+                    console.warn('[ClickableCurrentTimeDisplay] Invalid time values');
+                    return;
+                }
+                
+                // Use the correct formatTime method (not deprecated)
+                const formatTime = videojs.time && videojs.time.formatTime ? 
+                    videojs.time.formatTime : 
+                    videojs.formatTime;
+                
+                let displayText;
+                if (this.showRemaining && duration > 0) {
+                    const remainingTime = duration - currentTime;
+                    displayText = '-' + formatTime(remainingTime, duration);
+                } else {
+                    displayText = formatTime(currentTime, duration);
+                }
+                
+                // Only update if the text actually changed
+                if (this.contentEl_.textContent !== displayText) {
+                    this.contentEl_.textContent = displayText;
+                    
+                    // Debug logging (only log occasionally to avoid spam)
+                    if (Math.floor(currentTime) % 5 === 0 && Math.floor(currentTime * 10) % 10 === 0) {
+                        const mode = this.showRemaining ? '[REMAINING]' : '[ELAPSED]';
+                        console.log('[ClickableCurrentTimeDisplay] Updated ' + mode + ':', displayText);
+                    }
                 }
             }
             
-            handleClick() {
+            handleClick(event) {
+                console.log('=== CLICK EVENT RECEIVED ===');
+                console.log('[ClickableCurrentTimeDisplay] Event:', event);
+                console.log('[ClickableCurrentTimeDisplay] Event type:', event ? event.type : 'no event');
+                console.log('[ClickableCurrentTimeDisplay] Target:', event ? event.target : 'no target');
+                console.log('[ClickableCurrentTimeDisplay] Current showRemaining:', this.showRemaining);
+                console.log('[ClickableCurrentTimeDisplay] Current text:', this.contentEl_.textContent);
+                
+                // Toggle the mode
                 this.showRemaining = !this.showRemaining;
+                
+                console.log('[ClickableCurrentTimeDisplay] After toggle showRemaining:', this.showRemaining);
+                
+                // Get current values
+                const player = this.player();
+                const currentTime = player.currentTime();
+                const duration = player.duration();
+                console.log('[ClickableCurrentTimeDisplay] Current time:', currentTime, 'Duration:', duration);
+                
+                // Force immediate update
                 this.updateContent();
+                
+                // Verify the update happened
+                setTimeout(() => {
+                    console.log('[ClickableCurrentTimeDisplay] After update text:', this.contentEl_.textContent);
+                    console.log('=== CLICK HANDLED ===');
+                }, 10);
             }
             
-            updateTextNode_() {
-                // Override to use our custom updateContent
-                this.updateContent();
+            // Test method that can be called from console
+            testToggle() {
+                console.log('[TEST] Manual toggle test');
+                this.handleClick({ type: 'test', target: this.el() });
+            }
+            
+            
+            dispose() {
+                console.log('[ClickableCurrentTimeDisplay] Disposing component');
+                super.dispose();
             }
         }
         
@@ -925,6 +1053,20 @@
             // Setup fullscreen icon updates
             setupFullscreenIconUpdate(currentPlayer);
             
+            // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
+            currentPlayer.ready(function() {
+                console.log('[DEBUG] Player ready - checking controls');
+                const timeDisplay = currentPlayer.controlBar.getChild('ClickableCurrentTimeDisplay');
+                if (timeDisplay) {
+                    console.log('[DEBUG] ClickableCurrentTimeDisplay found in control bar');
+                    console.log('[DEBUG] Element:', timeDisplay.el());
+                    console.log('[DEBUG] Content element:', timeDisplay.contentEl_);
+                } else {
+                    console.error('[DEBUG] ClickableCurrentTimeDisplay NOT found in control bar!');
+                    console.log('[DEBUG] Available controls:', currentPlayer.controlBar.children().map(c => c.name()));
+                }
+            });
+            
             // Disable Video.js error display (we handle errors from mpegts.js)
             currentPlayer.off('error');
             
@@ -1149,6 +1291,20 @@
             
             // Setup fullscreen icon updates
             setupFullscreenIconUpdate(currentPlayer);
+            
+            // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
+            currentPlayer.ready(function() {
+                console.log('[DEBUG] Player ready - checking controls');
+                const timeDisplay = currentPlayer.controlBar.getChild('ClickableCurrentTimeDisplay');
+                if (timeDisplay) {
+                    console.log('[DEBUG] ClickableCurrentTimeDisplay found in control bar');
+                    console.log('[DEBUG] Element:', timeDisplay.el());
+                    console.log('[DEBUG] Content element:', timeDisplay.contentEl_);
+                } else {
+                    console.error('[DEBUG] ClickableCurrentTimeDisplay NOT found in control bar!');
+                    console.log('[DEBUG] Available controls:', currentPlayer.controlBar.children().map(c => c.name()));
+                }
+            });
             
             // Error handling
             currentPlayer.on('error', function() {
