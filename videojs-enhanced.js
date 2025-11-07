@@ -777,6 +777,81 @@
             });
         }
         
+        // Function to setup keyboard shortcuts
+        function setupKeyboardShortcuts(player) {
+            console.log('[Keyboard] Setting up keyboard shortcuts');
+            
+            // Create keyboard handler
+            const handleKeyPress = function(event) {
+                // Don't handle keyboard shortcuts if user is typing in an input field
+                const target = event.target;
+                if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+                    return;
+                }
+                
+                const key = event.key;
+                const keyCode = event.keyCode;
+                
+                // Log key press for debugging
+                console.log('[Keyboard] Key pressed:', key, 'KeyCode:', keyCode);
+                
+                switch (key) {
+                    case 'Escape':
+                    case 'Esc':
+                        console.log('[Keyboard] Escape pressed - closing video');
+                        event.preventDefault();
+                        closeVideo();
+                        break;
+                        
+                    case ' ':
+                    case 'Spacebar':
+                        console.log('[Keyboard] Space pressed - toggle play/pause');
+                        event.preventDefault();
+                        if (player.paused()) {
+                            player.play();
+                        } else {
+                            player.pause();
+                        }
+                        break;
+                        
+                    case 'ArrowRight':
+                    case 'Right':
+                        console.log('[Keyboard] Arrow Right - forward 5s');
+                        event.preventDefault();
+                        const currentTime = player.currentTime();
+                        const duration = player.duration();
+                        player.currentTime(Math.min(duration, currentTime + 5));
+                        break;
+                        
+                    case 'ArrowLeft':
+                    case 'Left':
+                        console.log('[Keyboard] Arrow Left - rewind 5s');
+                        event.preventDefault();
+                        const time = player.currentTime();
+                        player.currentTime(Math.max(0, time - 5));
+                        break;
+                }
+            };
+            
+            // Add keyboard event listener to document
+            document.addEventListener('keydown', handleKeyPress);
+            
+            // Store handler for cleanup
+            player.keyboardHandler = handleKeyPress;
+            
+            // Clean up on dispose
+            player.on('dispose', function() {
+                console.log('[Keyboard] Removing keyboard shortcuts');
+                document.removeEventListener('keydown', player.keyboardHandler);
+            });
+            
+            console.log('[Keyboard] Keyboard shortcuts ready:');
+            console.log('[Keyboard] - Escape: Close video');
+            console.log('[Keyboard] - Space: Play/Pause');
+            console.log('[Keyboard] - Arrow Right: Forward 5s');
+            console.log('[Keyboard] - Arrow Left: Rewind 5s');
+        }
+        
         let currentPlayer = null;
         let currentModal = null;
         let mpegtsPlayer = null;
@@ -1053,6 +1128,9 @@
             // Setup fullscreen icon updates
             setupFullscreenIconUpdate(currentPlayer);
             
+            // Setup keyboard shortcuts
+            setupKeyboardShortcuts(currentPlayer);
+            
             // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
             currentPlayer.ready(function() {
                 console.log('[DEBUG] Player ready - checking controls');
@@ -1291,6 +1369,9 @@
             
             // Setup fullscreen icon updates
             setupFullscreenIconUpdate(currentPlayer);
+            
+            // Setup keyboard shortcuts
+            setupKeyboardShortcuts(currentPlayer);
             
             // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
             currentPlayer.ready(function() {
