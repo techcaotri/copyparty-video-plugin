@@ -5,7 +5,7 @@
 (function() {
     'use strict';
     
-    console.log('Video.js Enhanced Plugin (with mpegts.js - SEEKING FIX) Loading...');
+    console.log('Video.js Enhanced Plugin (with mpegts.js - SEEKING FIX + TOUCH) Loading...');
     
     // Only initialize once
     if (window.videojsFinalLoaded) return;
@@ -520,6 +520,71 @@
             .vjs-error-display {
                 display: none;
             }
+
+            /* ===== TOUCH-SPECIFIC CSS ===== */
+            /* Touch feedback indicators */
+            .vjs-touch-feedback {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                font-size: 56px;
+                color: #ffffff;
+                background: transparent;
+                padding: 0;
+                border-radius: 0;
+                pointer-events: none;
+                opacity: 0;
+                transition: opacity 0.2s;
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                text-shadow: 0 0 8px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 0, 0, 0.7);
+                filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
+            }
+            
+            .vjs-touch-feedback.show {
+                opacity: 1;
+            }
+            
+            .vjs-touch-feedback .time-info {
+                font-size: 28px;
+                margin-left: 8px;
+                color: #ffffff;
+                text-shadow: 0 0 8px rgba(0, 0, 0, 0.9), 0 0 16px rgba(0, 0, 0, 0.7);
+            }
+            
+            /* Seeking overlay */
+            .vjs-seeking-overlay {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.4);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+                z-index: 5;
+            }
+            
+            .vjs-seeking-overlay.active {
+                display: flex;
+            }
+            
+            .vjs-seeking-text {
+                font-size: 32px;
+                color: #ffffff;
+                background: rgba(0, 0, 0, 0.8);
+                padding: 20px 35px;
+                border-radius: 10px;
+                text-align: center;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+                line-height: 1.4;
+            }
+            /* ===== END TOUCH-SPECIFIC CSS ===== */
         `;
         document.head.appendChild(style);
         
@@ -1022,6 +1087,185 @@
                 clearTimeout(inactivityTimeout);
             });
         }
+
+        // ===== TOUCH CONTROLS IMPLEMENTATION =====
+        function setupTouchControls(player) {
+            const videoElement = player.el().querySelector('.vjs-tech');
+            if (!videoElement) return;
+            
+            // Touch variables
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchStartTime = 0;
+            let touchStartVideoTime = 0;
+            let isSeeking = false;
+            let lastTapTime = 0;
+            
+            // Create touch feedback element
+            const touchFeedback = document.createElement('div');
+            touchFeedback.className = 'vjs-touch-feedback';
+            player.el().appendChild(touchFeedback);
+            
+            // Create seeking overlay
+            const seekingOverlay = document.createElement('div');
+            seekingOverlay.className = 'vjs-seeking-overlay';
+            seekingOverlay.innerHTML = '<div class="vjs-seeking-text">Seeking...</div>';
+            player.el().appendChild(seekingOverlay);
+            
+            // Show touch feedback
+            function showTouchFeedback(icon, timeOffset = null) {
+                let content = icon;
+                if (timeOffset !== null) {
+                    const sign = timeOffset > 0 ? '+' : '';
+                    content += `<span class="time-info">${sign}${timeOffset}s</span>`;
+                }
+                touchFeedback.innerHTML = content;
+                touchFeedback.classList.add('show');
+                setTimeout(() => {
+                    touchFeedback.classList.remove('show');
+                }, 500);
+            }
+            
+            // Format time as MM:SS or HH:MM:SS
+            function formatSeekTime(seconds) {
+                const h = Math.floor(seconds / 3600);
+                const m = Math.floor((seconds % 3600) / 60);
+                const s = Math.floor(seconds % 60);
+                
+                if (h > 0) {
+                    return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                } else {
+                    return `${m}:${s.toString().padStart(2, '0')}`;
+                }
+            }
+            
+            // Touch start handler
+            player.el().addEventListener('touchstart', function(e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    touchStartX = touch.clientX;
+                    touchStartY = touch.clientY;
+                    touchStartTime = Date.now();
+                    touchStartVideoTime = player.currentTime();
+                    isSeeking = false;
+                }
+            }, { passive: true });
+            
+            // Touch move handler - for continuous seeking with adaptive control
+            player.el().addEventListener('touchmove', function(e) {
+                if (e.touches.length === 1) {
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - touchStartX;
+                    const deltaY = touch.clientY - touchStartY;
+                    
+                    // Detect horizontal swipe (more horizontal than vertical)
+                    if (Math.abs(deltaX) > 30 && Math.abs(deltaX) > Math.abs(deltaY) * 2) {
+                        if (!isSeeking) {
+                            isSeeking = true;
+                        }
+                        e.preventDefault();
+                        
+                        // Adaptive seeking: scale based on video width
+                        // Formula: full screen width swipe = 180 seconds (3 minutes)
+                        // This makes seeking comfortable on any screen size (phone to 4K display)
+                        const videoWidth = player.el().clientWidth;
+                        const pixelsPerSecond = videoWidth / 180; // Full width = 180 seconds
+                        
+                        const seekSeconds = deltaX / pixelsPerSecond;
+                        const targetTime = Math.max(0, Math.min(touchStartVideoTime + seekSeconds, player.duration()));
+                        
+                        // Continuously update video position while dragging
+                        player.currentTime(targetTime);
+                        seekingOverlay.classList.add('active');
+                        
+                        // Show target time and time difference
+                        const currentTimeStr = formatSeekTime(touchStartVideoTime);
+                        const targetTimeStr = formatSeekTime(targetTime);
+                        const timeDiff = Math.round(targetTime - touchStartVideoTime);
+                        const sign = timeDiff > 0 ? '+' : '';
+                        
+                        seekingOverlay.querySelector('.vjs-seeking-text').innerHTML = 
+                            `<div style="font-size: 40px; font-weight: bold; margin-bottom: 8px;">${targetTimeStr}</div>` +
+                            `<div style="font-size: 24px; opacity: 0.9;">${currentTimeStr} ${sign}${timeDiff}s</div>`;
+                    }
+                }
+            }, { passive: false });
+            
+            // Touch end handler
+            player.el().addEventListener('touchend', function(e) {
+                const touchDuration = Date.now() - touchStartTime;
+                
+                if (isSeeking) {
+                    seekingOverlay.classList.remove('active');
+                    isSeeking = false;
+                    return;
+                }
+                
+                // Handle tap (quick touch, not a swipe)
+                if (touchDuration < 300 && Math.abs(e.changedTouches[0].clientX - touchStartX) < 10) {
+                    const now = Date.now();
+                    const timeSinceLastTap = now - lastTapTime;
+                    
+                    const tapX = touchStartX;
+                    const videoWidth = player.el().clientWidth;
+                    
+                    // Calculate tap zones
+                    const centerStart = videoWidth * 3 / 8;  // 37.5% from left
+                    const centerEnd = videoWidth * 5 / 8;    // 62.5% from left (center 25% width)
+                    const isInCenter = tapX >= centerStart && tapX <= centerEnd;
+                    
+                    // Double tap detection (only for left/right zones, not center)
+                    if (timeSinceLastTap < 300 && timeSinceLastTap > 0 && !isInCenter) {
+                        e.preventDefault();
+                        
+                        // Left half: rewind 5 seconds (matching existing buttons)
+                        if (tapX < videoWidth / 2) {
+                            const newTime = Math.max(0, player.currentTime() - 5);
+                            player.currentTime(newTime);
+                            showTouchFeedback('◀◀', -5);
+                        }
+                        // Right half: forward 5 seconds (matching existing buttons)
+                        else {
+                            const newTime = Math.min(player.duration(), player.currentTime() + 5);
+                            player.currentTime(newTime);
+                            showTouchFeedback('▶▶', +5);
+                        }
+                        
+                        lastTapTime = 0; // Reset to prevent triple tap
+                    } else {
+                        // Single tap behavior depends on location
+                        if (isInCenter) {
+                            // Center zone: play/pause
+                            e.preventDefault();
+                            if (player.paused()) {
+                                player.play();
+                                showTouchFeedback('▶');
+                            } else {
+                                player.pause();
+                                showTouchFeedback('❙❙');
+                            }
+                            lastTapTime = 0; // Don't register as tap time for double-tap
+                        } else {
+                            // Side zones: toggle controls visibility
+                            if (player.userActive()) {
+                                player.userActive(false);
+                            } else {
+                                player.userActive(true);
+                            }
+                            lastTapTime = now;
+                        }
+                    }
+                }
+            }, { passive: false });
+            
+            console.log('[Touch] Touch controls initialized');
+            console.log('[Touch] - Single tap center (25% width): Play/Pause');
+            console.log('[Touch] - Single tap sides: Toggle controls');
+            console.log('[Touch] - Double tap left: Rewind 5s');
+            console.log('[Touch] - Double tap right: Forward 5s');
+            console.log('[Touch] - Horizontal swipe: Adaptive seek (full width = 60s)');
+        }
+        // ===== END TOUCH CONTROLS =====
         
         function closeVideo() {
             console.log('Closing video player...');
@@ -1130,6 +1374,9 @@
             
             // Setup keyboard shortcuts
             setupKeyboardShortcuts(currentPlayer);
+            
+            // Setup touch controls
+            setupTouchControls(currentPlayer);
             
             // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
             currentPlayer.ready(function() {
@@ -1373,6 +1620,9 @@
             // Setup keyboard shortcuts
             setupKeyboardShortcuts(currentPlayer);
             
+            // Setup touch controls
+            setupTouchControls(currentPlayer);
+            
             // Debug: Check if ClickableCurrentTimeDisplay is in the control bar
             currentPlayer.ready(function() {
                 console.log('[DEBUG] Player ready - checking controls');
@@ -1592,11 +1842,13 @@
             return types[ext] || 'video/mp4';
         }
         
-        console.log('✓ Video.js Enhanced Plugin ready! (v8.17.3 - SEEKING FIX)');
+        console.log('✓ Video.js Enhanced Plugin ready! (v8.17.3 - SEEKING FIX + TOUCH)');
         console.log('✓ Supported: MP4, WebM, OGG, MKV, AVI, MOV, M3U8, TS');
         console.log('✓ .TS files: HTTP range-based seeking with lazy loading!');
         console.log('✓ Controls: Speed/Subtitle/Fullscreen at rightmost');
         console.log('✓ Features: Auto subtitles, manual upload, speed control, remaining time');
+        console.log('✓ Touch: Center tap=play/pause, Side tap=controls, Double tap=skip 5s');
+        console.log('✓ Touch Seek: Adaptive (full width = 60s), shows target time while dragging');
         console.log('Note: Network 404s for subtitle checks are normal (only checking common patterns)');
     }
 })();
