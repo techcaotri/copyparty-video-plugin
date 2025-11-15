@@ -860,12 +860,22 @@
                 // Log key press for debugging
                 console.log('[Keyboard] Key pressed:', key, 'KeyCode:', keyCode);
                 
+                // Store current userActive state before keyboard action
+                const wasUserActive = player.userActive();
+                
                 switch (key) {
                     case 'Escape':
                     case 'Esc':
                         console.log('[Keyboard] Escape pressed - closing video');
                         event.preventDefault();
                         closeVideo();
+                        break;
+                    
+                    case 'Enter':
+                        // Prevent Enter key from triggering unwanted actions (like clicking buttons)
+                        console.log('[Keyboard] Enter pressed - prevented default action');
+                        event.preventDefault();
+                        event.stopPropagation();
                         break;
                         
                     case ' ':
@@ -877,6 +887,10 @@
                         } else {
                             player.pause();
                         }
+                        // Restore userActive state to prevent showing controls
+                        setTimeout(() => {
+                            player.userActive(wasUserActive);
+                        }, 50);
                         break;
                         
                     case 'ArrowRight':
@@ -886,6 +900,10 @@
                         const currentTime = player.currentTime();
                         const duration = player.duration();
                         player.currentTime(Math.min(duration, currentTime + 5));
+                        // Restore userActive state to prevent showing controls
+                        setTimeout(() => {
+                            player.userActive(wasUserActive);
+                        }, 50);
                         break;
                         
                     case 'ArrowLeft':
@@ -894,6 +912,10 @@
                         event.preventDefault();
                         const time = player.currentTime();
                         player.currentTime(Math.max(0, time - 5));
+                        // Restore userActive state to prevent showing controls
+                        setTimeout(() => {
+                            player.userActive(wasUserActive);
+                        }, 50);
                         break;
                 }
             };
@@ -1166,10 +1188,10 @@
                         e.preventDefault();
                         
                         // Adaptive seeking: scale based on video width
-                        // Formula: full screen width swipe = 180 seconds (3 minutes)
+                        // Formula: full screen width swipe = 60 seconds (1 minute)
                         // This makes seeking comfortable on any screen size (phone to 4K display)
                         const videoWidth = player.el().clientWidth;
-                        const pixelsPerSecond = videoWidth / 180; // Full width = 180 seconds
+                        const pixelsPerSecond = videoWidth / 60; // Full width = 60 seconds
                         
                         const seekSeconds = deltaX / pixelsPerSecond;
                         const targetTime = Math.max(0, Math.min(touchStartVideoTime + seekSeconds, player.duration()));
