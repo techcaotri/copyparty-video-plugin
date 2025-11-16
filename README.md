@@ -5,13 +5,13 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 
 ## Features
 
-### 🎬 Video Playback
+### Video Playback
 - **Multiple Format Support**: MP4, WebM, OGG, MKV, AVI, MOV, M3U8 (HLS), and TS (MPEG-TS)
 - **MPEG-TS Optimization**: HTTP range-based seeking with lazy loading for `.ts` files
 - **mpegts.js Integration**: Automatic loading for transport stream files
 - **Responsive Modal Player**: Fullscreen overlay with proper aspect ratio handling
 
-### 📝 Subtitle Management
+### Subtitle Management
 - **Automatic Detection**: Scans for `.srt` and `.vtt` subtitle files automatically
 - **English Priority**: Auto-selects English subtitles as default track
 - **Multiple Languages**: Supports English, Vietnamese, Japanese, and custom patterns
@@ -22,7 +22,7 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
   - `video.en.srt` / `video-en.srt`
   - `video.vi.srt` / `video.ja.srt`
 
-### 🎮 Enhanced Controls
+### Enhanced Controls
 - **⏪ Rewind 5s**: Skip backward 5 seconds
 - **⏩ Forward 5s**: Skip forward 5 seconds
 - **Clickable Time Display**: Toggle between elapsed time and remaining time
@@ -30,8 +30,9 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 - **Auto-hide Controls**: Fade out after 3 seconds of inactivity
 - **Dynamic Fullscreen Icon**: Changes icon based on fullscreen state (⛶/⊗)
 - **Tooltips**: Hover over any control to see its function
+- **Touch Device Friendly**: Single Tap to Pause/Play, Double Tap sides for Fast-forward and Rewind, Drag screen to seek
 
-### 🎨 UI Enhancements
+### UI Enhancements
 - **Right-aligned Controls**: Speed, subtitle, and fullscreen controls aligned to the right
 - **Smooth Animations**: Fade transitions for control visibility
 - **Dark Theme**: Optimized for low-light viewing
@@ -102,7 +103,6 @@ Standard Video.js keyboard shortcuts apply:
 | MP4 | `.mp4`, `.m4v` | Native HTML5 support |
 | WebM | `.webm` | Native HTML5 support |
 | OGG | `.ogg`, `.ogv` | Native HTML5 support |
-| Matroska | `.mkv` | Browser-dependent |
 | AVI | `.avi` | Browser-dependent |
 | QuickTime | `.mov` | Browser-dependent |
 | MPEG-TS | `.ts` | Via mpegts.js (lazy loaded) |
@@ -133,10 +133,10 @@ Standard Video.js keyboard shortcuts apply:
 
 ## Browser Compatibility
 
-- ✅ Chrome/Edge (Recommended)
-- ✅ Firefox
-- ✅ Safari (with limitations on some formats)
-- ✅ Modern mobile browsers (iOS Safari, Chrome Mobile)
+- Chrome/Edge (Recommended)
+- Firefox
+- Safari (with limitations on some formats)
+- Modern mobile browsers (iOS Safari, Chrome Mobile)
 
 ## Troubleshooting
 
