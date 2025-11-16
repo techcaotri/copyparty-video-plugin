@@ -7,6 +7,11 @@
     
     console.log('Video.js Enhanced Plugin (with mpegts.js - SEEKING FIX + TOUCH) Loading...');
     
+    // ===== CONFIGURATION CONSTANTS =====
+    // Touch seek: Full width swipe duration in seconds
+    const TOUCH_SEEK_FULL_WIDTH_DURATION = 180; // Full screen swipe = 180 seconds
+    // ===== END CONFIGURATION =====
+    
     // Only initialize once
     if (window.videojsFinalLoaded) return;
     window.videojsFinalLoaded = true;
@@ -950,7 +955,7 @@
         }
         
         function isVideoFile(url) {
-            const videoExtensions = ['mp4', 'webm', 'ogv', 'ogg', 'm4v', 'mkv', 'avi', 'mov', 'ts', 'm3u8'];
+            const videoExtensions = ['mp4', 'webm', 'ogv', 'ogg', 'm4v', 'avi', 'mov', 'ts', 'm3u8'];
             return videoExtensions.includes(getFileExtension(url));
         }
         
@@ -1188,10 +1193,10 @@
                         e.preventDefault();
                         
                         // Adaptive seeking: scale based on video width
-                        // Formula: full screen width swipe = 60 seconds (1 minute)
+                        // Formula: full screen width swipe = TOUCH_SEEK_FULL_WIDTH_DURATION
                         // This makes seeking comfortable on any screen size (phone to 4K display)
                         const videoWidth = player.el().clientWidth;
-                        const pixelsPerSecond = videoWidth / 60; // Full width = 60 seconds
+                        const pixelsPerSecond = videoWidth / TOUCH_SEEK_FULL_WIDTH_DURATION;
                         
                         const seekSeconds = deltaX / pixelsPerSecond;
                         const targetTime = Math.max(0, Math.min(touchStartVideoTime + seekSeconds, player.duration()));
@@ -1855,7 +1860,6 @@
                 'ogv': 'video/ogg',
                 'ogg': 'video/ogg',
                 'm4v': 'video/mp4',
-                'mkv': 'video/x-matroska',
                 'avi': 'video/x-msvideo',
                 'mov': 'video/quicktime',
                 'ts': 'video/mp2t',
@@ -1865,12 +1869,13 @@
         }
         
         console.log('✓ Video.js Enhanced Plugin ready! (v8.17.3 - SEEKING FIX + TOUCH)');
-        console.log('✓ Supported: MP4, WebM, OGG, MKV, AVI, MOV, M3U8, TS');
+        console.log('✓ Supported: MP4, WebM, OGG, AVI, MOV, M3U8, TS');
         console.log('✓ .TS files: HTTP range-based seeking with lazy loading!');
         console.log('✓ Controls: Speed/Subtitle/Fullscreen at rightmost');
         console.log('✓ Features: Auto subtitles, manual upload, speed control, remaining time');
         console.log('✓ Touch: Center tap=play/pause, Side tap=controls, Double tap=skip 5s');
-        console.log('✓ Touch Seek: Adaptive (full width = 60s), shows target time while dragging');
+        console.log('✓ Touch Seek: Adaptive (full width = 180s), shows target time while dragging');
         console.log('Note: Network 404s for subtitle checks are normal (only checking common patterns)');
+        console.log('Note: MKV files are not supported - they will download normally');
     }
 })();
