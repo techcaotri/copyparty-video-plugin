@@ -23,8 +23,8 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
   - `video.vi.srt` / `video.ja.srt`
 
 ### Enhanced Controls
-- ** Rewind 5s**: Skip backward 5 seconds
-- ** Forward 5s**: Skip forward 5 seconds
+- **Rewind 5s**: Skip backward 5 seconds
+- **Forward 5s**: Skip forward 5 seconds
 - **Clickable Time Display**: Toggle between elapsed time and remaining time
 - **Variable Playback Speed**: 0.25x to 2x speed control
 - **Auto-hide Controls**: Fade out after 3 seconds of inactivity
