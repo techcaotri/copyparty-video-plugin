@@ -46,14 +46,14 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 Load the plugin when starting copyparty:
 
 ```bash
-copyparty --js-browser /path/to/videojs-enhanced-fixed.js
+copyparty --js-browser /path/to/videojs-enhanced.js
 ```
 
 ### File Location
 
 Place the script file in a directory accessible by your copyparty server, for example:
 ```
-/downloads/.copyparty-videojs/videojs-enhanced-fixed.js
+/downloads/.copyparty-videojs/videojs-enhanced.js
 ```
 
 ## Usage
