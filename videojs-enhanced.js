@@ -160,6 +160,23 @@
                 transform: scale(1.1);
             }
             
+            /* Video title */
+            .vjs-video-title {
+                position: fixed;
+                top: 20px;
+                left: 20px;
+                right: 70px;
+                color: #fff;
+                font-size: 16px;
+                font-weight: 500;
+                z-index: 1000001;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+                text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+                pointer-events: none;
+            }
+
             /* Video wrapper */
             .vjs-video-wrapper {
                 width: 100%;
@@ -948,6 +965,16 @@
         let currentModal = null;
         let mpegtsPlayer = null;
         
+        function getFileName(url) {
+            const urlWithoutQuery = url.split('?')[0];
+            const encoded = urlWithoutQuery.split('/').pop() || 'Video';
+            try {
+                return decodeURIComponent(encoded);
+            } catch (e) {
+                return encoded;
+            }
+        }
+
         function getFileExtension(url) {
             const urlWithoutQuery = url.split('?')[0];
             const parts = urlWithoutQuery.split('.');
@@ -984,6 +1011,10 @@
             const wrapper = document.createElement('div');
             wrapper.className = 'vjs-video-wrapper';
             
+            const titleEl = document.createElement('div');
+            titleEl.className = 'vjs-video-title';
+            titleEl.textContent = getFileName(videoUrl);
+
             const closeButton = document.createElement('button');
             closeButton.className = 'vjs-close-button';
             closeButton.textContent = '×';
@@ -1002,6 +1033,7 @@
             fileInput.onchange = handleSubtitleUpload;
             
             wrapper.appendChild(videoContainer);
+            currentModal.appendChild(titleEl);
             currentModal.appendChild(closeButton);
             currentModal.appendChild(wrapper);
             currentModal.appendChild(fileInput);
