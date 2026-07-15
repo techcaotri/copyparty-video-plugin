@@ -1003,7 +1003,8 @@
             openVideoModal(videoUrl);
         }, true);
         
-        function openVideoModal(videoUrl) {
+        function openVideoModal(videoUrl, options) {
+            options = options || {};
             // Normalize to a canonical absolute URL so recently-played keys stay consistent
             try { videoUrl = new URL(videoUrl, window.location.href).href; } catch (e) {}
             console.log('Opening video:', videoUrl);
@@ -1011,7 +1012,12 @@
             // Track this video for the recently-played list and resume where we left off
             currentVideoUrl = videoUrl;
             recordRecentPlay(videoUrl);
-            pendingResumeTime = getResumePosition(videoUrl);
+            if (options.restart) {
+                updateRecentProgress(videoUrl, 0);   // forget saved position, play from the start
+                pendingResumeTime = 0;
+            } else {
+                pendingResumeTime = getResumePosition(videoUrl);
+            }
 
             // Create modal
             currentModal = document.createElement('div');
@@ -1362,7 +1368,18 @@
             try {
                 localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(list));
             } catch (e) {
-                console.warn('[Recent] Failed to save list:', e);
+                // Storage is likely full (thumbnails are the bulk) - retry without them
+                try {
+                    const stripped = list.map(function(item) {
+                        const copy = Object.assign({}, item);
+                        delete copy.thumb;
+                        return copy;
+                    });
+                    localStorage.setItem(RECENT_STORAGE_KEY, JSON.stringify(stripped));
+                    console.warn('[Recent] Storage full; saved list without thumbnails');
+                } catch (e2) {
+                    console.warn('[Recent] Failed to save list:', e2);
+                }
             }
         }
 
@@ -1397,6 +1414,41 @@
                 list[idx].duration = duration;
             }
             saveRecentList(list);
+        }
+
+        // Store a captured thumbnail (data URL) for an existing entry
+        function updateRecentThumb(videoUrl, dataUrl) {
+            if (!videoUrl || !dataUrl) return;
+            const list = loadRecentList();
+            const idx = list.findIndex(item => item.url === videoUrl);
+            if (idx === -1) return;
+            list[idx].thumb = dataUrl;
+            saveRecentList(list);
+            refreshRecentUI();
+        }
+
+        // Grab the current video frame as a small JPEG data URL (best effort, once per video)
+        function captureThumbnail(videoEl, videoUrl) {
+            if (!videoEl || !videoUrl) return;
+            const entry = loadRecentList().find(item => item.url === videoUrl);
+            if (!entry || entry.thumb) return;
+            const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
+            if (!vw || !vh) return;
+            try {
+                const targetW = 160;
+                const canvas = document.createElement('canvas');
+                canvas.width = targetW;
+                canvas.height = Math.max(1, Math.round(vh * (targetW / vw)));
+                canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.55);
+                if (dataUrl && dataUrl.indexOf('data:image/jpeg') === 0 && dataUrl.length > 200) {
+                    updateRecentThumb(videoUrl, dataUrl);
+                    console.log('[Recent] Captured thumbnail for', entry.name);
+                }
+            } catch (e) {
+                // A cross-origin video taints the canvas; just skip thumbnails then
+                console.log('[Recent] Thumbnail capture skipped:', e && e.message);
+            }
         }
 
         function removeRecentItem(videoUrl) {
@@ -1436,11 +1488,18 @@
         // Hook a player so it periodically persists its position
         function setupPlaybackTracking(player) {
             let lastSaved = 0;
+            let thumbCaptured = false;
             player.on('timeupdate', function() {
                 const now = Date.now();
                 if (now - lastSaved >= 5000) {   // throttle writes to every 5s
                     lastSaved = now;
                     savePlaybackPosition();
+                }
+                // Grab a representative frame once we're past any black intro
+                if (!thumbCaptured && player.currentTime() > 1) {
+                    thumbCaptured = true;
+                    const videoEl = player.el() && player.el().querySelector('video');
+                    if (videoEl) captureThumbnail(videoEl, currentVideoUrl);
                 }
             });
             player.on('pause', savePlaybackPosition);
@@ -1609,17 +1668,22 @@
                 .vjs-recent-item:hover { background: rgba(74, 144, 226, 0.16); }
                 .vjs-recent-item-icon {
                     flex-shrink: 0;
-                    width: 38px;
-                    height: 38px;
-                    border-radius: 8px;
-                    background: rgba(74, 144, 226, 0.22);
+                    width: 64px;
+                    height: 40px;
+                    border-radius: 6px;
+                    background-color: rgba(74, 144, 226, 0.22);
+                    background-size: cover;
+                    background-position: center;
+                    background-repeat: no-repeat;
                     color: #7bb0f0;
                     display: flex;
                     align-items: center;
                     justify-content: center;
                     font-size: 15px;
+                    overflow: hidden;
                 }
-                .vjs-recent-item:hover .vjs-recent-item-icon { background: rgba(74, 144, 226, 0.4); color: #fff; }
+                .vjs-recent-item:hover .vjs-recent-item-icon { background-color: rgba(74, 144, 226, 0.4); color: #fff; }
+                .vjs-recent-item-icon.has-thumb { color: transparent; background-color: #000; }
                 .vjs-recent-item-main { flex: 1; min-width: 0; }
                 .vjs-recent-item-name {
                     font-size: 14px;
@@ -1652,6 +1716,21 @@
                 }
                 .vjs-recent-item:hover .vjs-recent-item-remove { opacity: 1; }
                 .vjs-recent-item-remove:hover { background: rgba(226, 86, 74, 0.85); color: #fff; }
+                .vjs-recent-item-restart {
+                    flex-shrink: 0;
+                    background: transparent;
+                    border: none;
+                    color: #8b94a0;
+                    font-size: 15px;
+                    line-height: 1;
+                    cursor: pointer;
+                    padding: 4px 6px;
+                    border-radius: 4px;
+                    opacity: 0;
+                    transition: all 0.15s;
+                }
+                .vjs-recent-item:hover .vjs-recent-item-restart { opacity: 1; }
+                .vjs-recent-item-restart:hover { background: rgba(74, 144, 226, 0.85); color: #fff; }
                 .vjs-resume-toast {
                     position: fixed;
                     bottom: 90px;
@@ -1783,7 +1862,12 @@
 
                 const icon = document.createElement('div');
                 icon.className = 'vjs-recent-item-icon';
-                icon.textContent = '▶';
+                if (entry.thumb) {
+                    icon.classList.add('has-thumb');
+                    icon.style.backgroundImage = 'url("' + entry.thumb + '")';
+                } else {
+                    icon.textContent = '▶';
+                }
 
                 const main = document.createElement('div');
                 main.className = 'vjs-recent-item-main';
@@ -1816,6 +1900,23 @@
                 main.appendChild(meta);
                 main.appendChild(progress);
 
+                // "Play from beginning" - only meaningful when there is a resume point to override
+                const canResume = !finished && pos >= RESUME_MIN_SECONDS && dur > 0;
+                let restart = null;
+                if (canResume) {
+                    restart = document.createElement('button');
+                    restart.className = 'vjs-recent-item-restart';
+                    restart.type = 'button';
+                    restart.title = 'Play from beginning';
+                    restart.setAttribute('aria-label', 'Play from beginning');
+                    restart.textContent = '⏮';
+                    restart.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        closeRecentPanel();
+                        openVideoModal(resolveRecentUrl(entry.url), { restart: true });
+                    });
+                }
+
                 const remove = document.createElement('button');
                 remove.className = 'vjs-recent-item-remove';
                 remove.type = 'button';
@@ -1829,6 +1930,7 @@
 
                 item.appendChild(icon);
                 item.appendChild(main);
+                if (restart) item.appendChild(restart);
                 item.appendChild(remove);
                 item.addEventListener('click', function() {
                     closeRecentPanel();

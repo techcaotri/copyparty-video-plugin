@@ -36,13 +36,16 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 - **Persistent History**: Every video you open is saved to a "Recently Played" list that survives page reloads and browser restarts (stored client-side via `localStorage`)
 - **Resume Where You Left Off**: Reopening a video (from the file browser or the panel) continues from your last position, with a brief "Resumed from mm:ss" notice
 - **Recently Played Panel**: A floating 🕒 button in the bottom-right corner opens a slide-in panel showing your recent videos, each with:
+  - A **thumbnail** captured from the video (a frame grabbed during playback)
   - A watch-progress bar and last-played time (e.g. "2 hours ago")
   - Click-to-resume — tap any item to reopen and continue it
+  - **Play from beginning** (⏮) — restart an in-progress video instead of resuming
   - Per-item remove, plus a "Clear all" button
   - A count badge on the button
 - **Per-Server**: The list is scoped to each copyparty server (browser origin), and links are rebuilt against the current host so they keep working across host/port changes
 - **Smart Thresholds**: Videos watched to within 15s of the end are marked "Watched" and start over on next open; barely-started videos (< 5s) don't trigger a resume
-- **Capacity**: Keeps the 50 most recently played videos
+- **Capacity**: Keeps the 50 most recently played videos. Thumbnails are stored locally too; if browser storage fills up, they're dropped automatically while the history itself is preserved
+- **Thumbnails** are only captured for same-origin videos (the normal copyparty case); cross-origin sources fall back to a play icon
 
 ### UI Enhancements
 - **Right-aligned Controls**: Speed, subtitle, and fullscreen controls aligned to the right
