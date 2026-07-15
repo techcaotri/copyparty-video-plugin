@@ -32,6 +32,18 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 - **Tooltips**: Hover over any control to see its function
 - **Touch Device Friendly**: Single Tap to Pause/Play, Double Tap sides for Fast-forward and Rewind, Drag screen to seek
 
+### Recently Played & Resume
+- **Persistent History**: Every video you open is saved to a "Recently Played" list that survives page reloads and browser restarts (stored client-side via `localStorage`)
+- **Resume Where You Left Off**: Reopening a video (from the file browser or the panel) continues from your last position, with a brief "Resumed from mm:ss" notice
+- **Recently Played Panel**: A floating 🕒 button in the bottom-right corner opens a slide-in panel showing your recent videos, each with:
+  - A watch-progress bar and last-played time (e.g. "2 hours ago")
+  - Click-to-resume — tap any item to reopen and continue it
+  - Per-item remove, plus a "Clear all" button
+  - A count badge on the button
+- **Per-Server**: The list is scoped to each copyparty server (browser origin), and links are rebuilt against the current host so they keep working across host/port changes
+- **Smart Thresholds**: Videos watched to within 15s of the end are marked "Watched" and start over on next open; barely-started videos (< 5s) don't trigger a resume
+- **Capacity**: Keeps the 50 most recently played videos
+
 ### UI Enhancements
 - **Right-aligned Controls**: Speed, subtitle, and fullscreen controls aligned to the right
 - **Smooth Animations**: Fade transitions for control visibility
@@ -164,6 +176,8 @@ The plugin is designed to work out-of-the-box with sensible defaults:
 - **Skip duration**: 5 seconds
 - **Playback speeds**: 0.25x, 0.5x, 0.75x, 1x, 1.25x, 1.5x, 1.75x, 2x
 - **Subtitle check delay**: 50ms between patterns
+- **Recently played history**: 50 most recent videos (`localStorage` key `copyparty-vjs-recent`)
+- **Resume thresholds**: resumes when the saved position is > 5s and not within 15s of the end
 
 ## License
 
