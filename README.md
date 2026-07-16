@@ -47,6 +47,18 @@ A comprehensive Video.js plugin for copyparty file server with advanced features
 - **Capacity**: Keeps the 50 most recently played videos. Thumbnails are stored locally too; if browser storage fills up, they're dropped automatically while the history itself is preserved
 - **Thumbnails** are only captured for same-origin videos (the normal copyparty case); cross-origin sources fall back to a play icon
 
+### Cross-Session & Cross-Device Sync
+When you're **logged in**, your recently-played list (with resume positions and thumbnails) follows your account across browsers and devices — not just the current browser.
+
+- **How it works**: on load, the plugin stores a small per-user JSON file on the copyparty server and merges it with the local copy, so history and progress accumulate across everywhere you watch
+- **Automatic location**: it finds a folder your account can write to — preferring the site root so every device points at the same file — and stores the list there as a hidden `.copyparty-video-recent.<user>.json`. No setup required
+- **Private per account**: the file is named after your username (`CGV.acct`) and written with your own login, so each account keeps its own separate list
+- **Merge, not overwrite**: additions and the latest resume position are unioned across devices; removing an item or "Clear all" pushes the deletion to the server
+- **Graceful fallback**: anonymous visitors, or accounts without a writable folder, transparently use browser-local storage only
+- **Configuration** (top of the script):
+  - `RECENT_SYNC_ENABLED` — set to `false` to disable server sync entirely
+  - `RECENT_SYNC_DIR` — pin the file to a specific folder (e.g. `/priv`) instead of auto-detecting. The folder must grant the account **write + delete** (delete is required to overwrite the file in place)
+
 ### UI Enhancements
 - **Right-aligned Controls**: Speed, subtitle, and fullscreen controls aligned to the right
 - **Smooth Animations**: Fade transitions for control visibility
@@ -181,6 +193,7 @@ The plugin is designed to work out-of-the-box with sensible defaults:
 - **Subtitle check delay**: 50ms between patterns
 - **Recently played history**: 50 most recent videos (`localStorage` key `copyparty-vjs-recent`)
 - **Resume thresholds**: resumes when the saved position is > 5s and not within 15s of the end
+- **Cross-session sync**: on by default when logged in (`RECENT_SYNC_ENABLED`); auto-detects a writable folder unless `RECENT_SYNC_DIR` is set. The sync file requires an account with **write + delete** access
 
 ## License
 

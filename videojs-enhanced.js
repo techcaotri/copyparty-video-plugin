@@ -1347,11 +1347,22 @@
         const RESUME_MIN_SECONDS = 5;      // don't bother resuming a barely-started video
         const RESUME_END_THRESHOLD = 15;   // within this many seconds of the end = "finished"
 
+        // ---- Cross-session sync (stores the list per-user on the copyparty server) ----
+        const RECENT_SYNC_ENABLED = true;
+        // '' = auto-detect a writable folder (prefers the site root for cross-device stability).
+        // Or hard-wire a copyparty path relative to the root, e.g. '/priv' or '/.appdata'.
+        // The folder must grant the logged-in account write AND delete (needed to overwrite in place).
+        const RECENT_SYNC_DIR = '';
+        const RECENT_SYNC_BASENAME = '.copyparty-video-recent';  // '<basename>.<user>.json'
+        const RECENT_SYNC_DEBOUNCE = 3000;                       // coalesce server writes (ms)
+
         // References to the recently-played UI (created once by setupRecentUI)
         let recentFab = null;
         let recentPanel = null;
         let recentListEl = null;
         let recentBadge = null;
+        let recentSyncDir = null;    // resolved server folder (URL path) or null when sync is off
+        let recentSyncTimer = null;  // debounce timer for server writes
 
         function loadRecentList() {
             try {
@@ -1399,6 +1410,7 @@
             if (list.length > RECENT_MAX_ITEMS) list.length = RECENT_MAX_ITEMS;
             saveRecentList(list);
             refreshRecentUI();
+            scheduleServerSave();
         }
 
         // Update playback progress for an existing entry (no reordering)
@@ -1455,11 +1467,13 @@
             const list = loadRecentList().filter(item => item.url !== videoUrl);
             saveRecentList(list);
             refreshRecentUI();
+            pushLocalToServer();
         }
 
         function clearRecentList() {
             saveRecentList([]);
             refreshRecentUI();
+            pushLocalToServer();
         }
 
         // How far to resume, or 0 if we should start from the beginning
@@ -1502,8 +1516,8 @@
                     if (videoEl) captureThumbnail(videoEl, currentVideoUrl);
                 }
             });
-            player.on('pause', savePlaybackPosition);
-            player.on('ended', savePlaybackPosition);
+            player.on('pause', function() { savePlaybackPosition(); scheduleServerSave(); });
+            player.on('ended', function() { savePlaybackPosition(); scheduleServerSave(); });
         }
 
         function formatClock(seconds) {
@@ -1550,6 +1564,151 @@
                 toast.classList.remove('show');
                 setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 400);
             }, 3200);
+        }
+
+        // ----- Cross-session server sync -----
+        // copyparty exposes the logged-in account and root prefix to the page as JS globals
+        function cpAccount() {
+            try { return (window.CGV && window.CGV.acct) || '*'; } catch (e) { return '*'; }
+        }
+        function cpRoot() {
+            try { return (typeof window.SR === 'string') ? window.SR : ''; } catch (e) { return ''; }
+        }
+        function normDir(p) {
+            if (!p) p = '/';
+            if (p.charAt(0) !== '/') p = '/' + p;
+            if (p.charAt(p.length - 1) !== '/') p += '/';
+            return p.replace(/\/{2,}/g, '/');
+        }
+        function syncFileName() {
+            const safe = cpAccount().replace(/[^A-Za-z0-9_.-]/g, '_');
+            return RECENT_SYNC_BASENAME + '.' + safe + '.json';
+        }
+        function syncCacheKey() {
+            return 'copyparty-vjs-syncdir:' + cpAccount();
+        }
+        // Candidate folders to store the sync file in, root-first (root is identical across
+        // devices, so preferring it keeps every device pointed at the same file)
+        function candidateSyncDirs() {
+            const root = cpRoot();
+            if (RECENT_SYNC_DIR) return [normDir(root + '/' + RECENT_SYNC_DIR)];
+            let path = location.pathname || '/';
+            if (root && path.indexOf(root) === 0) path = path.slice(root.length);
+            const segs = path.split('/').filter(Boolean);
+            const dirs = [normDir(root + '/')];
+            let acc = '';
+            for (let i = 0; i < segs.length; i++) {
+                acc += '/' + segs[i];
+                dirs.push(normDir(root + acc + '/'));
+            }
+            return dirs.filter((d, i) => dirs.indexOf(d) === i);
+        }
+        // A folder is usable only with write AND delete (delete lets us overwrite in place)
+        function probeSyncDir(dir) {
+            return fetch(dir + '?ls', { credentials: 'same-origin', cache: 'no-store', headers: { 'Accept': 'application/json' } })
+                .then(r => r.ok ? r.json() : null)
+                .then(j => {
+                    const perms = j && j.perms;
+                    return (perms && perms.indexOf('write') !== -1 && perms.indexOf('delete') !== -1) ? dir : null;
+                })
+                .catch(() => null);
+        }
+        function resolveSyncDir() {
+            if (!RECENT_SYNC_ENABLED || cpAccount() === '*') return Promise.resolve(null);
+            let cached = null;
+            try { cached = localStorage.getItem(syncCacheKey()); } catch (e) {}
+            if (cached) return Promise.resolve(cached);
+            return candidateSyncDirs().reduce(
+                (chain, dir) => chain.then(found => found || probeSyncDir(dir)),
+                Promise.resolve(null)
+            ).then(found => {
+                if (found) { try { localStorage.setItem(syncCacheKey(), found); } catch (e) {} }
+                return found;
+            });
+        }
+        function loadServerList(dir) {
+            return fetch(dir + syncFileName(), { credentials: 'same-origin', cache: 'no-store' })
+                .then(r => {
+                    if (r.status === 404) return [];
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    return r.json();
+                })
+                .then(list => Array.isArray(list) ? list : [])
+                .catch(err => { console.warn('[Recent] server load failed:', err && err.message); return null; });
+        }
+        function saveServerList(dir, list) {
+            // 'replace' header + delete-access makes copyparty overwrite the file in place
+            return fetch(dir + syncFileName(), {
+                method: 'PUT',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', 'replace': '1' },
+                body: JSON.stringify(list)
+            }).then(r => {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return true;
+            }).catch(err => { console.warn('[Recent] server save failed:', err && err.message); return false; });
+        }
+        // Union two lists by url; the most recently played copy wins for order/name/position
+        function mergeRecentLists(a, b) {
+            const map = {};
+            const add = function(item) {
+                if (!item || !item.url) return;
+                const cur = map[item.url];
+                if (!cur) { map[item.url] = Object.assign({}, item); return; }
+                const itemNewer = (item.lastPlayed || 0) >= (cur.lastPlayed || 0);
+                map[item.url] = {
+                    url: item.url,
+                    name: (itemNewer ? item.name : cur.name) || cur.name || item.name,
+                    lastPlayed: Math.max(cur.lastPlayed || 0, item.lastPlayed || 0),
+                    position: itemNewer ? (item.position || 0) : (cur.position || 0),
+                    duration: Math.max(cur.duration || 0, item.duration || 0),
+                    thumb: cur.thumb || item.thumb
+                };
+            };
+            (a || []).forEach(add);
+            (b || []).forEach(add);
+            const out = Object.keys(map).map(k => map[k]).sort((x, y) => (y.lastPlayed || 0) - (x.lastPlayed || 0));
+            if (out.length > RECENT_MAX_ITEMS) out.length = RECENT_MAX_ITEMS;
+            return out;
+        }
+        // Pull the server copy, union it into local, then push the union back (additions + progress)
+        function syncWithServer() {
+            if (!recentSyncDir) return Promise.resolve();
+            return loadServerList(recentSyncDir).then(serverList => {
+                if (serverList === null) return;   // network error - keep local untouched
+                const merged = mergeRecentLists(loadRecentList(), serverList);
+                saveRecentList(merged);
+                refreshRecentUI();
+                return saveServerList(recentSyncDir, merged);
+            });
+        }
+        function scheduleServerSave() {
+            if (!recentSyncDir) return;
+            clearTimeout(recentSyncTimer);
+            recentSyncTimer = setTimeout(syncWithServer, RECENT_SYNC_DEBOUNCE);
+        }
+        // Overwrite the server copy with local as-is (used for removals, which a union would undo)
+        function pushLocalToServer() {
+            if (!recentSyncDir) return;
+            clearTimeout(recentSyncTimer);
+            saveServerList(recentSyncDir, loadRecentList());
+        }
+        function initRecentSync() {
+            if (!RECENT_SYNC_ENABLED) return;
+            if (cpAccount() === '*') {
+                console.log('[Recent] not logged in - server sync off, using local storage only');
+                return;
+            }
+            resolveSyncDir().then(dir => {
+                if (!dir) {
+                    console.log('[Recent] no writable+deletable folder found - server sync off ' +
+                        '(set RECENT_SYNC_DIR to a folder the account can write and delete in)');
+                    return;
+                }
+                recentSyncDir = dir;
+                console.log('[Recent] server sync on for "' + cpAccount() + '" -> ' + dir + syncFileName());
+                syncWithServer();
+            });
         }
 
         // ----- Recently-played UI (floating button + slide-in panel) -----
@@ -1799,7 +1958,7 @@
             // Persist progress if the tab is hidden or closed mid-playback
             window.addEventListener('pagehide', savePlaybackPosition);
             document.addEventListener('visibilitychange', function() {
-                if (document.visibilityState === 'hidden') savePlaybackPosition();
+                if (document.visibilityState === 'hidden') { savePlaybackPosition(); scheduleServerSave(); }
             });
 
             refreshRecentUI();
@@ -1947,6 +2106,7 @@
 
             // Persist the current playback position before tearing anything down
             savePlaybackPosition();
+            scheduleServerSave();
 
             // Stop and destroy mpegts.js player if it exists
             if (mpegtsPlayer) {
@@ -2559,8 +2719,9 @@
             return types[ext] || 'video/mp4';
         }
         
-        // Set up the recently-played list button + panel
+        // Set up the recently-played list button + panel, then sync it from the server
         setupRecentUI();
+        initRecentSync();
 
         console.log('✓ Video.js Enhanced Plugin ready! (v8.17.3 - SEEKING FIX + TOUCH)');
         console.log('✓ Supported: MP4, WebM, OGG, AVI, MOV, M3U8, TS');
